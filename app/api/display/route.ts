@@ -1,21 +1,16 @@
 import { NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase/client'
+import { defaultDevice } from '@/lib/defaultDevice'
 
 export async function GET(request: Request) {
-    const apiKey = request.headers.get('Access-Token')
-    const macAddress = request.headers.get('ID')
-    const refreshRate = request.headers.get('Refresh-Rate')
-    const batteryVoltage = request.headers.get('Battery-Voltage')
-    const fwVersion = request.headers.get('FW-Version')
-    const rssi = request.headers.get('RSSI')
+    const apiKey = request.headers.get('Access-Token') || defaultDevice.api_key;
+    const macAddress = request.headers.get('ID') || defaultDevice.mac_address;
+    const refreshRate = request.headers.get('Refresh-Rate');
+    const batteryVoltage = request.headers.get('Battery-Voltage');
+    const fwVersion = request.headers.get('FW-Version');
+    const rssi = request.headers.get('RSSI');
 
-    if (!apiKey || !macAddress) {
-        return NextResponse.json({
-            status: 500,
-            reset_firmware: true,
-            message: "Device not found"
-        }, { status: 200 })
-    }
+   
 
     try {
         const { data: device, error } = await supabase
@@ -25,35 +20,13 @@ export async function GET(request: Request) {
             .eq('mac_address', macAddress)
             .single()
 
-        if (error) {
+        if (error || !device) {
             console.error('Error fetching device:', error)
             return NextResponse.json({
                 status: 500,
-                reset_firmware: true,
-                message: "Device not found"
-            }, { status: 200 })
-        }
-        if (!device) {
-            return NextResponse.json({
-                status: 500,
-                reset_firmware: true,
-                message: "Device not found"
-            }, { status: 200 })
-        }
-
-        // If device has no user
-        if (!device.user_id) {
-            return NextResponse.json({
-                status: 202,
-                image_url: "https://usetrmnl.com/images/setup/setup-logo.bmp",
-                filename: "setup-logo.bmp",
-                refresh_rate: "30",
                 reset_firmware: false,
-                update_firmware: false,
-                firmware_url: null,
-                special_function: "none",
-                message: `Device ${device.friendly_id} added to BYOS! Please log in to attach it to a user to continue.`,
-            }, { status: 200 })
+                message: "Device not found, trace: api/display -> try-catch block -> try -> supabase error or no device"
+            }, { status: 500 })
         }
 
         // Log device metrics if needed
@@ -65,32 +38,22 @@ export async function GET(request: Request) {
             refresh_rate: refreshRate
         })
 
-        // Get latest screen or use default
-        const { data: screen } = await supabase
-            .from('screens')
-            .select('*')
-            .eq('device_id', device.id)
-            .order('created_at', { ascending: false })
-            .limit(1)
-            .single()
+        const imageUrl = `https://api.manglekuo.com/api/dashboard/bitmap/t.bmp`;
 
-        const imageUrl = screen
-            ? `${process.env.NEXT_PUBLIC_API_URL}/api/device-image/${device.friendly_id}-${screen.id}.bmp?api_key=${apiKey}`
-            : "https://usetrmnl.com/images/rover.bmp"
+        const filename = `t.bmp`
 
-        const filename = screen
-            ? `${device.friendly_id}-${screen.id}.bmp`
-            : "rover.bmp"
+        // Ensure refresh_interval is in seconds (minimum 60 seconds)
+        const refreshRateMax = Math.max(60, Number(refreshRate || 60))
 
         return NextResponse.json({
             status: 0,
             image_url: imageUrl,
             filename: filename,
-            refresh_rate: device.refresh_interval.toString(),
+            refresh_rate: refreshRateMax.toString(),
             reset_firmware: false,
             update_firmware: false,
             firmware_url: null,
-            special_function: "none"
+            special_function: "restart_playlist"
         }, { status: 200 })
 
     } catch (error) {
@@ -98,7 +61,7 @@ export async function GET(request: Request) {
         return NextResponse.json({
             status: 500,
             reset_firmware: true,
-            message: "Device not found"
-        }, { status: 200 })
+            message: "Device not found, trace: api/display -> try-catch block -> catch -> error"
+        }, { status: 500 })
     }
 } 

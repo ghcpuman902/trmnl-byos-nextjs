@@ -14,10 +14,6 @@ interface LogData {
   [key: string]: unknown; // For any additional fields
 }
 
-interface RequestBody {
-  log: LogData;
-}
-
 export async function POST(request: Request) {
   // Add detailed URL logging at the very start
   console.log('🌐 Full Request Details:')
@@ -26,80 +22,43 @@ export async function POST(request: Request) {
   console.log('   Path:', new URL(request.url).pathname)
   console.log('   Search:', new URL(request.url).search)
   console.log('   Origin:', new URL(request.url).origin)
-  
-  // Clone request early to ensure we can read it
-  const clonedRequest = request.clone()
-  
-  let requestBody: RequestBody
-  try {
-    requestBody = await clonedRequest.json()
-    console.log('📦 Raw Request Body:', JSON.stringify(requestBody, null, 2))
-  } catch (e) {
-    console.error('❌ Error parsing request body:', e)
-    requestBody = { log: { logs_array: [] } }
-  }
 
   try {
-    const body: RequestBody = await request.json()
-    const apiKey = request.headers.get('Access-Token')
-    console.log('🔑 API Key received:', apiKey ? 'Yes' : 'No')
-    
-    console.log('📝 Processing logs array:', body.log.logs_array)
-    
-    // Get or create default device (will be used as fallback)
-    let defaultDeviceData = await supabase
+    const apiKey = request.headers.get('Access-Token') || defaultDevice.api_key;
+    const macAddress = request.headers.get('ID') || defaultDevice.mac_address;
+    // const refreshRate = request.headers.get('Refresh-Rate');
+    // const batteryVoltage = request.headers.get('Battery-Voltage');
+    // const fwVersion = request.headers.get('FW-Version');
+    // const rssi = request.headers.get('RSSI');
+
+    const { data: device, error } = await supabase
       .from('devices')
-      .select('id')
-      .eq('friendly_id', defaultDevice.friendly_id)
+      .select('*')
+      .eq('api_key', apiKey)
+      .eq('mac_address', macAddress)
       .single()
-      .then(result => result.data)
 
-    if (!defaultDeviceData) {
-      console.log('📱 Creating default device in database')
-      const { data: newDevice, error: createError } = await supabase
-        .from('devices')
-        .insert({
-          friendly_id: defaultDevice.friendly_id,
-          name: defaultDevice.device_name,
-          mac_address: defaultDevice.mac_address,
-          api_key: defaultDevice.api_key,
-          refresh_interval: defaultDevice.refresh_rate
-        })
-        .select('id')
-        .single()
-
-      if (createError) {
-        console.error('⚠️ Error creating default device, but continuing:', createError)
-      }
-      defaultDeviceData = newDevice
+    if (error || !device) {
+      console.error('Error fetching device:', error)
+      return NextResponse.json({
+        status: 500,
+        reset_firmware: false,
+        message: "Device not found, trace: api/log -> try-catch block -> try -> supabase error or no device"
+      }, { status: 500 })
     }
+    console.log(request.headers.get('Access-Token') ? `🔑 API Key received: ${request.headers.get('Access-Token')}` : `🔑 No API Key received, using default device: ${defaultDevice.api_key}`)
 
-    // Try to get device from API key, but use default if anything fails
-    let deviceId = defaultDeviceData?.id
-    if (apiKey) {
-      const { data: device } = await supabase
-        .from('devices')
-        .select('id')
-        .eq('api_key', apiKey)
-        .single()
+    const requestBody = await request.json()
+    console.log('📝 Processing logs array:', requestBody.log.logs_array)
 
-      if (device) {
-        deviceId = device.id
-      } else {
-        console.log('⚠️ Device not found for API key, using default device')
-      }
-    }
 
     // Process log data
-    const logData: LogData = {
-      ...body.log,
-      logs_array: body.log.logs_array.map((log: LogEntry) => ({
+    const logData: LogData = requestBody.log.logs_array.map((log: LogEntry) => ({
         ...log,
-        timestamp: log.creation_timestamp 
+        timestamp: log.creation_timestamp
           ? new Date(log.creation_timestamp * 1000).toISOString()
           : new Date().toISOString()
       }))
-    }
 
     console.log('📦 Processed log data:', JSON.stringify(logData, null, 2))
 
@@ -107,7 +66,7 @@ export async function POST(request: Request) {
     const { error: logError } = await supabase
       .from('logs')
       .insert({
-        device_id: deviceId,
+        device_id: device.friendly_id,
         log_data: logData
       })
 
@@ -115,36 +74,20 @@ export async function POST(request: Request) {
       console.error('⚠️ Error inserting log, but continuing:', logError)
     }
 
-    console.log('✅ Log saved successfully for device:', deviceId)
+    console.log('✅ Log saved successfully for device:', device.friendly_id)
     console.log('📝 Final saved log data:', JSON.stringify(logData, null, 2))
 
     return NextResponse.json({
       status: 200,
       message: "Log received"
-    })
+    }, { status: 200 })
 
   } catch (error) {
-    console.error('⚠️ Error occurred, but continuing with default device:', error)
-    
-    // Even in case of error, try to save with default device
-    try {
-      const { error: logError } = await supabase
-        .from('logs')
-        .insert({
-          device_id: defaultDevice.friendly_id,
-          log_data: { logs_array: [] }
-        })
-
-      if (logError) {
-        console.error('❌ Final fallback logging failed:', logError)
-      }
-    } catch (finalError) {
-      console.error('❌ Final fallback logging failed:', finalError)
-    }
-
+    console.error('Error:', error)
     return NextResponse.json({
-      status: 200,
-      message: "Log attempt processed"
-    })
+        status: 500,
+        reset_firmware: true,
+        message: "Device not found, trace: api/log -> try-catch block -> catch -> error"
+    }, { status: 500 })
   }
 } 
