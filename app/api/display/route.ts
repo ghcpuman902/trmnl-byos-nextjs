@@ -1,16 +1,25 @@
 import { NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase/client'
 import { defaultDevice } from '@/lib/defaultDevice'
+import { logError, logInfo } from '@/lib/logger'
 
 export async function GET(request: Request) {
+    // Log request details
+    logInfo('Display API Request', {
+        source: 'api/display',
+        metadata: {
+            url: request.url,
+            method: request.method,
+            path: new URL(request.url).pathname
+        }
+    })
+
     const apiKey = request.headers.get('Access-Token') || defaultDevice.api_key;
     const macAddress = request.headers.get('ID') || defaultDevice.mac_address;
     const refreshRate = request.headers.get('Refresh-Rate');
     const batteryVoltage = request.headers.get('Battery-Voltage');
     const fwVersion = request.headers.get('FW-Version');
     const rssi = request.headers.get('RSSI');
-
-   
 
     try {
         const { data: device, error } = await supabase
@@ -21,7 +30,11 @@ export async function GET(request: Request) {
             .single()
 
         if (error || !device) {
-            console.error('Error fetching device:', error)
+            logError('Error fetching device', {
+                source: 'api/display',
+                metadata: { error, apiKey, macAddress },
+                trace: 'try-catch block -> try -> supabase error or no device'
+            })
             return NextResponse.json({
                 status: 500,
                 reset_firmware: false,
@@ -29,21 +42,30 @@ export async function GET(request: Request) {
             }, { status: 500 })
         }
 
-        // Log device metrics if needed
-        console.log({
-            device_id: device.id,
-            battery_voltage: batteryVoltage,
-            fw_version: fwVersion,
-            rssi: rssi,
-            refresh_rate: refreshRate
+        // Log device metrics
+        logInfo('Device metrics received', {
+            source: 'api/display',
+            metadata: {
+                device_id: device.id,
+                battery_voltage: batteryVoltage,
+                fw_version: fwVersion,
+                rssi: rssi,
+                refresh_rate: refreshRate
+            }
         })
 
         const imageUrl = `https://api.manglekuo.com/api/dashboard/bitmap/t.bmp`;
-
         const filename = `t.bmp`
-
-        // Ensure refresh_interval is in seconds (minimum 60 seconds)
         const refreshRateMax = Math.max(60, Number(refreshRate || 60))
+
+        logInfo('Display request successful', {
+            source: 'api/display',
+            metadata: {
+                device_id: device.id,
+                refresh_rate: refreshRateMax,
+                filename
+            }
+        })
 
         return NextResponse.json({
             status: 0,
@@ -57,7 +79,10 @@ export async function GET(request: Request) {
         }, { status: 200 })
 
     } catch (error) {
-        console.error('Error:', error)
+        logError(error as Error, {
+            source: 'api/display',
+            trace: 'Main try-catch block'
+        })
         return NextResponse.json({
             status: 500,
             reset_firmware: true,

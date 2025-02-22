@@ -1,27 +1,36 @@
 import { NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase/client'
 import { defaultDevice } from '@/lib/defaultDevice'
+import { logError, logInfo } from '@/lib/logger'
 
 interface LogEntry {
-  creation_timestamp: number;
-  // Add other known log entry fields here
-  [key: string]: unknown; // For any additional fields
+  creation_timestamp: number
+  message?: string
+  level?: string
+  device_status?: string
+  battery_voltage?: number
+  rssi?: number
+  firmware_version?: string
 }
 
 interface LogData {
-  logs_array: LogEntry[];
-  // Add other known log data fields here
-  [key: string]: unknown; // For any additional fields
+  logs_array: LogEntry[]
+  device_id?: string
+  timestamp?: string
 }
 
 export async function POST(request: Request) {
-  // Add detailed URL logging at the very start
-  console.log('🌐 Full Request Details:')
-  console.log('   URL:', request.url)
-  console.log('   Method:', request.method)
-  console.log('   Path:', new URL(request.url).pathname)
-  console.log('   Search:', new URL(request.url).search)
-  console.log('   Origin:', new URL(request.url).origin)
+  // Log request details
+  logInfo('Log API Request', {
+    source: 'api/log',
+    metadata: {
+      url: request.url,
+      method: request.method,
+      path: new URL(request.url).pathname,
+      search: new URL(request.url).search,
+      origin: new URL(request.url).origin
+    }
+  })
 
   try {
     const apiKey = request.headers.get('Access-Token') || defaultDevice.api_key;
@@ -39,18 +48,30 @@ export async function POST(request: Request) {
       .single()
 
     if (error || !device) {
-      console.error('Error fetching device:', error)
+      logError('Error fetching device', {
+        source: 'api/log',
+        metadata: { error: JSON.stringify(error), apiKey, macAddress },
+        trace: 'try-catch block -> try -> supabase error or no device'
+      })
       return NextResponse.json({
         status: 500,
         reset_firmware: false,
         message: "Device not found, trace: api/log -> try-catch block -> try -> supabase error or no device"
       }, { status: 500 })
     }
-    console.log(request.headers.get('Access-Token') ? `🔑 API Key received: ${request.headers.get('Access-Token')}` : `🔑 No API Key received, using default device: ${defaultDevice.api_key}`)
+    logInfo('Device authenticated', {
+      source: 'api/log',
+      metadata: {
+        api_key: apiKey,
+        device_id: device.friendly_id
+      }
+    })
 
     const requestBody = await request.json()
-    console.log('📝 Processing logs array:', requestBody.log.logs_array)
-
+    logInfo('Processing logs array', {
+      source: 'api/log',
+      metadata: { logs: requestBody.log.logs_array }
+    })
 
     // Process log data
     const logData: LogData = requestBody.log.logs_array.map((log: LogEntry) => ({
@@ -63,19 +84,28 @@ export async function POST(request: Request) {
     console.log('📦 Processed log data:', JSON.stringify(logData, null, 2))
 
     // Always attempt to insert log with default device if needed
-    const { error: logError } = await supabase
+    const { error: insertError } = await supabase
       .from('logs')
       .insert({
         device_id: device.friendly_id,
         log_data: logData
       })
 
-    if (logError) {
-      console.error('⚠️ Error inserting log, but continuing:', logError)
+    if (insertError) {
+      logError('Error inserting log', {
+        source: 'api/log',
+        metadata: { error: JSON.stringify(insertError) },
+        trace: 'Database insert error'
+      })
     }
 
-    console.log('✅ Log saved successfully for device:', device.friendly_id)
-    console.log('📝 Final saved log data:', JSON.stringify(logData, null, 2))
+    logInfo('Log saved successfully', {
+      source: 'api/log',
+      metadata: {
+        device_id: device.friendly_id,
+        log_data: logData
+      }
+    })
 
     return NextResponse.json({
       status: 200,
@@ -83,7 +113,10 @@ export async function POST(request: Request) {
     }, { status: 200 })
 
   } catch (error) {
-    console.error('Error:', error)
+    logError(error as Error, {
+      source: 'api/log',
+      trace: 'Main try-catch block'
+    })
     return NextResponse.json({
         status: 500,
         reset_firmware: true,

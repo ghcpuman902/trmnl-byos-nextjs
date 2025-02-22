@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase/client'
 import { defaultDevice } from '@/lib/defaultDevice';
+import { logError, logInfo } from '@/lib/logger'
 
 export async function GET(request: Request) {
     try {
@@ -29,7 +30,11 @@ export async function GET(request: Request) {
             .single()
 
         if (error || !device) {
-            console.error('Error fetching device:', error)
+            logError('Error fetching device:', {
+                source: 'api/setup',
+                metadata: { error, macAddress },
+                trace: 'try-catch block -> try -> supabase error or no device'
+            })
             return NextResponse.json({
                 status: 500,
                 reset_firmware: false,
@@ -38,6 +43,10 @@ export async function GET(request: Request) {
         }
 
         if (device) {
+            logInfo(`Device ${device.friendly_id} added to BYOS!`, {
+                source: 'api/setup',
+                metadata: { friendlyId: device.friendly_id }
+            })
             // Device exists 
             return NextResponse.json({
                 status: 200,
@@ -83,7 +92,10 @@ export async function GET(request: Request) {
         }, { status: 200 })
 
     } catch (error) {
-        console.error('Error:', error)
+        logError(error as Error, {
+            source: 'api/setup',
+            trace: 'Main try-catch block'
+        })
         return NextResponse.json({
             status: 500,
             error: 'Internal server error'
