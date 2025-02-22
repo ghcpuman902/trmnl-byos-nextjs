@@ -32,7 +32,7 @@ export async function GET(request: Request) {
   })
 
   const apiKey = request.headers.get('Access-Token') || defaultDevice.api_key;
-  const macAddress = request.headers.get('ID')?.toUpperCase();
+  const macAddress = request.headers.get('ID')?.toUpperCase() || defaultDevice.mac_address;
 
   if (!macAddress) {
     return NextResponse.json({
@@ -97,7 +97,7 @@ export async function POST(request: Request) {
 
   try {
     const apiKey = request.headers.get('Access-Token') || defaultDevice.api_key;
-    const macAddress = request.headers.get('ID')?.toUpperCase();
+    const macAddress = request.headers.get('ID')?.toUpperCase() || defaultDevice.mac_address;
     // const refreshRate = request.headers.get('Refresh-Rate');
     // const batteryVoltage = request.headers.get('Battery-Voltage');
     // const fwVersion = request.headers.get('FW-Version');
