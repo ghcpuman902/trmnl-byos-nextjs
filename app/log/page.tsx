@@ -1,5 +1,7 @@
 import { TimeAgo } from '@/app/components/TimeAgo'
+import { LogMetadata } from '@/app/components/LogMetadata'
 import { readLogs, type Log } from '@/lib/logger'
+import { Fragment } from 'react'
 
 async function getData(): Promise<Log[]> {
   'use server'
@@ -8,13 +10,50 @@ async function getData(): Promise<Log[]> {
 
 async function handleRefresh() {
   'use server'
-  await getData()
+  // Import revalidatePath from next/cache
+  const { revalidatePath } = await import('next/cache')
+  // Revalidate the current page
+  revalidatePath('/log')
 }
 
 export const revalidate = 5 // Revalidate every 5 seconds
 
+type LogGroup = {
+  timestamp: Date;
+  logs: Log[];
+};
+
+const groupLogsByTime = (logs: Log[], timeWindowMs: number = 5000): LogGroup[] => {
+  if (!logs?.length) return [];
+  
+  // Sort logs by timestamp in descending order (newest first)
+  const sortedLogs = [...logs].sort((a, b) => 
+    new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+  );
+  
+  return sortedLogs.reduce((groups: LogGroup[], log) => {
+    const logTime = new Date(log.created_at);
+    const lastGroup = groups[groups.length - 1];
+    
+    // Check if we should add to existing group or create new one
+    if (lastGroup && Math.abs(logTime.getTime() - lastGroup.timestamp.getTime()) <= timeWindowMs) {
+      lastGroup.logs.push(log);
+      // Update group timestamp to the latest time in the group
+      lastGroup.timestamp = new Date(Math.max(
+        lastGroup.timestamp.getTime(),
+        logTime.getTime()
+      ));
+    } else {
+      groups.push({ timestamp: logTime, logs: [log] });
+    }
+    
+    return groups;
+  }, []);
+};
+
 export default async function LogsPage() {
   const logs = await getData()
+  const logGroups = groupLogsByTime(logs)
 
   return (
     <div className="min-h-screen bg-gray-50 p-8">
@@ -41,7 +80,7 @@ export default async function LogsPage() {
           ) : (
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
+                <thead className="bg-gray-50 sticky top-0 z-10">
                   <tr>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Time</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Level</th>
@@ -51,33 +90,42 @@ export default async function LogsPage() {
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {logs.map((log) => (
-                    <tr key={log.id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        <TimeAgo date={log.created_at} />
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
-                          ${log.level === 'error' && 'bg-red-100 text-red-800'}
-                          ${log.level === 'warn' && 'bg-yellow-100 text-yellow-800'}
-                          ${log.level === 'info' && 'bg-blue-100 text-blue-800'}
-                          ${log.level === 'debug' && 'bg-gray-100 text-gray-800'}
-                        `}>
-                          {log.level}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {log.source}
-                      </td>
-                      <td className="px-6 py-4 text-sm text-gray-900">
-                        {log.message}
-                      </td>
-                      <td className="px-6 py-4 text-sm text-gray-500">
-                        <pre className="whitespace-pre-wrap font-mono text-xs">
-                          {log.metadata ? JSON.stringify(log.metadata, null, 2) : '-'}
-                        </pre>
-                      </td>
-                    </tr>
+                  {logGroups.map((group) => (
+                    <Fragment key={group.timestamp.toISOString()}>
+                      {group.logs.map((log, logIndex) => (
+                        <tr 
+                          key={log.id} 
+                          className={`
+                            hover:bg-gray-50 transition-colors
+                            ${logIndex === 0 ? 'border-t-2 border-gray-100' : ''}
+                          `}
+                        >
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {logIndex === 0 && <TimeAgo date={group.timestamp} />}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <span className={`
+                              inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
+                              ${log.level === 'error' && 'bg-red-100 text-red-800'}
+                              ${log.level === 'warn' && 'bg-yellow-100 text-yellow-800'}
+                              ${log.level === 'info' && 'bg-blue-100 text-blue-800'}
+                              ${log.level === 'debug' && 'bg-gray-100 text-gray-800'}
+                            `}>
+                              {log.level}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {log.source}
+                          </td>
+                          <td className="px-6 py-4 text-sm text-gray-900">
+                            {log.message}
+                          </td>
+                          <td className="px-6 py-4 text-sm text-gray-500">
+                            <LogMetadata metadata={log.metadata} />
+                          </td>
+                        </tr>
+                      ))}
+                    </Fragment>
                   ))}
                 </tbody>
               </table>

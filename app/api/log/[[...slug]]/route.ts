@@ -20,8 +20,7 @@ interface LogData {
 }
 
 export async function GET(request: Request) {
-  // Log request details
-  logInfo('Log API Request but weirdly from GET', {
+  logInfo('Log API GET Request received (unexpected)', {
     source: 'api/log',
     metadata: {
       url: request.url,
@@ -31,8 +30,57 @@ export async function GET(request: Request) {
       origin: new URL(request.url).origin
     }
   })
-}
 
+  const apiKey = request.headers.get('Access-Token') || defaultDevice.api_key;
+  const macAddress = request.headers.get('ID')?.toUpperCase();
+
+  if (!macAddress) {
+    return NextResponse.json({
+      status: 404,
+      reset_firmware: false,
+      message: "ID header is required"
+    }, { status: 200 }) // Status 200 for device compatibility
+  }
+
+  try {
+    const { data: device, error } = await supabase
+      .from('devices')
+      .select('*')
+      .eq('api_key', apiKey)
+      .eq('mac_address', macAddress)
+      .single()
+
+    if (error || !device) {
+      logError('Error fetching device', {
+        source: 'api/log',
+        metadata: { error: JSON.stringify(error), apiKey, macAddress },
+        trace: 'GET handler -> device fetch error'
+      })
+      return NextResponse.json({
+        status: 500,
+        reset_firmware: false,
+        message: "Device not found"
+      }, { status: 200 })
+    }
+
+    return NextResponse.json({
+      status: 400, // Indicate wrong method in body
+      reset_firmware: false,
+      message: "Please use POST method for sending logs",
+      device_id: device.friendly_id
+    }, { status: 200 })
+  } catch (error) {
+    logError(error as Error, {
+      source: 'api/log',
+      trace: 'GET handler -> main try-catch'
+    })
+    return NextResponse.json({
+      status: 500,
+      reset_firmware: false,
+      message: "Internal server error"
+    }, { status: 200 })
+  }
+}
 
 export async function POST(request: Request) {
   // Log request details
@@ -49,7 +97,7 @@ export async function POST(request: Request) {
 
   try {
     const apiKey = request.headers.get('Access-Token') || defaultDevice.api_key;
-    const macAddress = request.headers.get('ID') || defaultDevice.mac_address;
+    const macAddress = request.headers.get('ID')?.toUpperCase();
     // const refreshRate = request.headers.get('Refresh-Rate');
     // const batteryVoltage = request.headers.get('Battery-Voltage');
     // const fwVersion = request.headers.get('FW-Version');

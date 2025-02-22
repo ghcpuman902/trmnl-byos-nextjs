@@ -15,7 +15,7 @@ export async function GET(request: Request) {
     })
 
     const apiKey = request.headers.get('Access-Token') || defaultDevice.api_key;
-    const macAddress = request.headers.get('ID') || defaultDevice.mac_address;
+    const macAddress = request.headers.get('ID')?.toUpperCase();
     const refreshRate = request.headers.get('Refresh-Rate');
     const batteryVoltage = request.headers.get('Battery-Voltage');
     const fwVersion = request.headers.get('FW-Version');

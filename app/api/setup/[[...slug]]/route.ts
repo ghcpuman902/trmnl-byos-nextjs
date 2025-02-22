@@ -6,20 +6,20 @@ import { logError, logInfo } from '@/lib/logger'
 export async function GET(request: Request) {
     try {
         const apiKey = request.headers.get('Access-Token') || defaultDevice.api_key;
-        const macAddress = request.headers.get('ID') || defaultDevice.mac_address;
+        const macAddress = request.headers.get('ID')?.toUpperCase();
         // const refreshRate = request.headers.get('Refresh-Rate');
         // const batteryVoltage = request.headers.get('Battery-Voltage');
         // const fwVersion = request.headers.get('FW-Version');
         // const rssi = request.headers.get('RSSI');
 
-        if (!request.headers.get('ID')) {
+        if (!macAddress) {
             return NextResponse.json({
                 status: 404,
                 api_key: null,
                 friendly_id: null,
                 image_url: null,
-                message: "ID header is required.",
-            }, { status: 200 }) // Note: Status 200 but with 404 in body
+                message: "ID header is required"
+            }, { status: 200 }) // Status 200 for device compatibility
         }
 
         const { data: device, error } = await supabase
@@ -39,7 +39,7 @@ export async function GET(request: Request) {
                 status: 500,
                 reset_firmware: false,
                 message: "Device not found, trace: api/setup -> try-catch block -> try -> supabase error or no device"
-            }, { status: 500 })
+            }, { status: 200 })
         }
 
         if (device) {
@@ -47,18 +47,17 @@ export async function GET(request: Request) {
                 source: 'api/setup',
                 metadata: { 
                     friendly_id: device.friendly_id,
-                    numeric_device_id: device.id  // Add both IDs
+                    numeric_device_id: device.id
                 }
             })
-            // Device exists 
             return NextResponse.json({
                 status: 200,
                 api_key: device.api_key,
                 friendly_id: device.friendly_id,
-                numeric_device_id: device.id,  // Add numeric ID to response
+                numeric_device_id: device.id,
                 image_url: null,
                 filename: null,
-                message: `Device ${device.friendly_id} added to BYOS!`,
+                message: `Device ${device.friendly_id} added to BYOS!`
             }, { status: 200 })
         }
 
@@ -103,6 +102,6 @@ export async function GET(request: Request) {
         return NextResponse.json({
             status: 500,
             error: 'Internal server error'
-        }, { status: 500 })
+        }, { status: 200 })
     }
 } 
