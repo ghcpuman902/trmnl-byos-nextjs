@@ -48,9 +48,17 @@ export default function TestPage() {
         headers: {
           'Content-Type': 'application/json',
           'Access-Token': defaultDevice.api_key,
+          'ID': defaultDevice.mac_address,
         },
         body: JSON.stringify({
-          log: 'Test log message from device',
+          log: {
+            logs_array: [{
+              creation_timestamp: Math.floor(Date.now() / 1000),
+              message: 'Test log message from device',
+              level: 'info',
+              device_status: 'ok'
+            }]
+          }
         }),
       })
       const data = await response.json()

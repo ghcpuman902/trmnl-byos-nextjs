@@ -45,13 +45,17 @@ export async function GET(request: Request) {
         if (device) {
             logInfo(`Device ${device.friendly_id} added to BYOS!`, {
                 source: 'api/setup',
-                metadata: { friendlyId: device.friendly_id }
+                metadata: { 
+                    friendly_id: device.friendly_id,
+                    numeric_device_id: device.id  // Add both IDs
+                }
             })
             // Device exists 
             return NextResponse.json({
                 status: 200,
                 api_key: device.api_key,
                 friendly_id: device.friendly_id,
+                numeric_device_id: device.id,  // Add numeric ID to response
                 image_url: null,
                 filename: null,
                 message: `Device ${device.friendly_id} added to BYOS!`,

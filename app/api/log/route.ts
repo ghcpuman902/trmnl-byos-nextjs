@@ -19,6 +19,21 @@ interface LogData {
   timestamp?: string
 }
 
+export async function GET(request: Request) {
+  // Log request details
+  logInfo('Log API Request but weirdly from GET', {
+    source: 'api/log',
+    metadata: {
+      url: request.url,
+      method: request.method,
+      path: new URL(request.url).pathname,
+      search: new URL(request.url).search,
+      origin: new URL(request.url).origin
+    }
+  })
+}
+
+
 export async function POST(request: Request) {
   // Log request details
   logInfo('Log API Request', {
@@ -87,7 +102,8 @@ export async function POST(request: Request) {
     const { error: insertError } = await supabase
       .from('logs')
       .insert({
-        device_id: device.friendly_id,
+        friendly_id: device.friendly_id,
+        numeric_device_id: device.id,
         log_data: logData
       })
 

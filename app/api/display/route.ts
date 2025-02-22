@@ -46,7 +46,8 @@ export async function GET(request: Request) {
         logInfo('Device metrics received', {
             source: 'api/display',
             metadata: {
-                device_id: device.id,
+                friendly_id: device.friendly_id,
+                numeric_device_id: device.id,
                 battery_voltage: batteryVoltage,
                 fw_version: fwVersion,
                 rssi: rssi,
@@ -61,7 +62,8 @@ export async function GET(request: Request) {
         logInfo('Display request successful', {
             source: 'api/display',
             metadata: {
-                device_id: device.id,
+                friendly_id: device.friendly_id,
+                numeric_device_id: device.id,
                 refresh_rate: refreshRateMax,
                 filename
             }
