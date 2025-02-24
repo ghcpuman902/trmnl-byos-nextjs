@@ -63,7 +63,7 @@ export default async function LogsPage() {
           <form action={handleRefresh}>
             <button
               type="submit"
-              className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+              className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-xs text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-hidden focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
               aria-label="Refresh logs"
             >
               Refresh Logs
@@ -71,7 +71,7 @@ export default async function LogsPage() {
           </form>
         </div>
         
-        <div className="bg-white shadow-sm rounded-lg overflow-hidden">
+        <div className="bg-white shadow-xs rounded-lg overflow-hidden">
           {!logs?.length ? (
             <div className="p-8 text-center">
               <p className="text-gray-500 text-lg">No logs found</p>

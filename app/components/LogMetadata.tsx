@@ -65,7 +65,7 @@ export const LogMetadata = ({ metadata }: { metadata: Record<string, unknown> | 
             </div>
             {/* {isExpanded && (
                 <div 
-                className="fixed inset-0 bg-black/50 z-[5]" 
+                className="fixed inset-0 bg-black/50 z-5" 
                 onClick={handleToggle}
                 aria-hidden="true"
                 />
