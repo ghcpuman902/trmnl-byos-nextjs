@@ -1,30 +1,35 @@
 import { TrainFrontTunnel } from 'lucide-react';
 import { getLineStatusByMode } from '../actions/getLineStatusByMode';
+import {
+    Tooltip,
+    TooltipContent,
+    TooltipProvider,
+    TooltipTrigger,
+} from "@/components/ui/tooltip"
 
 const lineColorMap = {
-    'bakerloo': '#B36305',
-    'central': '#E32017',
-    'circle': '#FFD300',
-    'district': '#00782A',
-    'hammersmith-city': '#F3A9BB',
-    'jubilee': '#A0A5A9',
-    'metropolitan': '#9B0056',
-    'northern': '#000000',
-    'piccadilly': '#003688',
-    'victoria': '#0098D4',
-    'waterloo-city': '#95CDBA',
-    'dlr': '#00A4A7',
-    'elizabeth': '#6950A1',
-    'lioness': '#FC9D9A',
-    'mildmay': '#0071FD',
-    'suffragette': '#76B82A',
-    'weaver': '#A45A2A',
-    'windrush': '#EE2E24',
-    'overground': '#0071FD'
+    'bakerloo': { text: 'text-[var(--tfl-bakerloo)]', bg: 'bg-[var(--tfl-bakerloo)]' },
+    'central': { text: 'text-[var(--tfl-central)]', bg: 'bg-[var(--tfl-central)]' },
+    'circle': { text: 'text-[var(--tfl-circle)]', bg: 'bg-[var(--tfl-circle)]' },
+    'district': { text: 'text-[var(--tfl-district)]', bg: 'bg-[var(--tfl-district)]' },
+    'hammersmith-city': { text: 'text-[var(--tfl-hammersmith-city)]', bg: 'bg-[var(--tfl-hammersmith-city)]' },
+    'jubilee': { text: 'text-[var(--tfl-jubilee)]', bg: 'bg-[var(--tfl-jubilee)]' },
+    'metropolitan': { text: 'text-[var(--tfl-metropolitan)]', bg: 'bg-[var(--tfl-metropolitan)]' },
+    'northern': { text: 'text-[var(--tfl-northern)]', bg: 'bg-[var(--tfl-northern)]' },
+    'piccadilly': { text: 'text-[var(--tfl-piccadilly)]', bg: 'bg-[var(--tfl-piccadilly)]' },
+    'victoria': { text: 'text-[var(--tfl-victoria)]', bg: 'bg-[var(--tfl-victoria)]' },
+    'waterloo-city': { text: 'text-[var(--tfl-waterloo-city)]', bg: 'bg-[var(--tfl-waterloo-city)]' },
+    'dlr': { text: 'text-[var(--tfl-dlr)]', bg: 'bg-[var(--tfl-dlr)]' },
+    'elizabeth': { text: 'text-[var(--tfl-elizabeth)]', bg: 'bg-[var(--tfl-elizabeth)]' },
+    'lioness': { text: 'text-[var(--tfl-lioness)]', bg: 'bg-[var(--tfl-lioness)]' },
+    'mildmay': { text: 'text-[var(--tfl-mildmay)]', bg: 'bg-[var(--tfl-mildmay)]' },
+    'suffragette': { text: 'text-[var(--tfl-suffragette)]', bg: 'bg-[var(--tfl-suffragette)]' },
+    'weaver': { text: 'text-[var(--tfl-weaver)]', bg: 'bg-[var(--tfl-weaver)]' },
+    'windrush': { text: 'text-[var(--tfl-windrush)]', bg: 'bg-[var(--tfl-windrush)]' },
+    'overground': { text: 'text-[var(--tfl-overground)]', bg: 'bg-[var(--tfl-overground)]' }
 } as const;
 
-const severityNumbers = Array.from({ length: 21 }, (_, i) => i);
-type SeverityNumber = typeof severityNumbers[number];
+type SeverityNumber = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20;
 
 const severityMapping = {
     critical: [1, 2, 3, 16] as const, // 1: Closed, 2: Suspended, 3: Part Suspended, 16: Not Running
@@ -61,20 +66,60 @@ const hasNightClosure = (statuses: Array<{ statusSeverity: number }>) => {
     return statuses.some(status => status.statusSeverity === 20);
 };
 
+const lineOrder = [
+    'circle',
+    'district',
+    'windrush',
+    'elizabeth',
+    'dlr',
+    'central',
+    'northern',
+    'piccadilly',
+    'jubilee',
+    'victoria',
+    'bakerloo',
+    'hammersmith-city',
+    'metropolitan',
+    'liberty',
+    'lioness',
+    'mildmay',
+    'suffragette',
+    'weaver'
+] as const;
+
+const getLineOrder = (lineId: string) => {
+    const index = lineOrder.indexOf(lineId as typeof lineOrder[number]);
+    return index === -1 ? lineOrder.length : index;
+};
+
 export default async function StatusPage() {
     const lineStatuses = await getLineStatusByMode(['tube', 'elizabeth-line', 'dlr', 'overground']);
 
-    // Sort line statuses by lowest (most severe) status severity
+    // Enhanced sorting logic
     const sortedLineStatuses = lineStatuses.sort((a, b) => {
         const aMinSeverity = Math.min(...a.lineStatuses.map(s => s.statusSeverity));
         const bMinSeverity = Math.min(...b.lineStatuses.map(s => s.statusSeverity));
-        return aMinSeverity - bMinSeverity; // Ascending order
+        
+        // If both lines have normal service, sort by predefined order
+        if (isNormalSeverity(a.lineStatuses) && isNormalSeverity(b.lineStatuses)) {
+            return getLineOrder(a.id) - getLineOrder(b.id);
+        }
+        
+        // If severities are different, sort by severity
+        if (aMinSeverity !== bMinSeverity) {
+            return aMinSeverity - bMinSeverity;
+        }
+        
+        // If both lines have the same severity level (but not normal),
+        // still sort by predefined order as a fallback
+        return getLineOrder(a.id) - getLineOrder(b.id);
     });
 
     return (
-        <div className="container mx-auto p-4">
-            <h1 className="text-2xl font-bold mb-6">TfL Line Status</h1>
-
+        <div className="container mx-auto p-4 flex flex-col gap-2">
+            <h1 className="scroll-m-20 text-4xl font-extrabold tracking-tight lg:text-5xl">
+                TfL Line Status
+            </h1>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {sortedLineStatuses.filter(line => !isNormalSeverity(line.lineStatuses)).map((line) => (
                     <div
@@ -87,14 +132,14 @@ export default async function StatusPage() {
                             {(line.modeName === 'overground' || line.modeName === 'elizabeth-line') ? (
                                 <>
                                     <div className={`w-full h-[6px] ${line.id in lineColorMap
-                                        ? `bg-[${lineColorMap[line.id as keyof typeof lineColorMap]}]`
+                                        ? `${lineColorMap[line.id as keyof typeof lineColorMap].bg}`
                                         : 'bg-gray-400'
                                         } ${line.lineStatuses[0]?.statusSeverity < 7 ? getSeverityAnimation(line.lineStatuses[0].statusSeverity as SeverityNumber) + ' saturate-150' : ''}`} />
                                     <div className="absolute top-[2px] left-0 w-full h-[2px] bg-white" />
                                 </>
                             ) : (
                                 <div className={`w-full h-[6px] ${line.id in lineColorMap
-                                    ? `bg-[${lineColorMap[line.id as keyof typeof lineColorMap]}]`
+                                    ? `${lineColorMap[line.id as keyof typeof lineColorMap].bg}`
                                     : 'bg-gray-400'
                                     } ${line.lineStatuses[0]?.statusSeverity < 7 ? getSeverityAnimation(line.lineStatuses[0].statusSeverity as SeverityNumber) + ' saturate-150' : ''}`} />
                             )}
@@ -125,35 +170,45 @@ export default async function StatusPage() {
                     </div>
                 ))}
             </div>
-            <div className="grid lg:grid-cols-5 gap-4 mt-6 justify-items-stretch">
+            <div className="grid lg:grid-cols-5 gap-4 justify-items-stretch">
                 <div className="flex flex-col justify-end">
-                    <h2 className="text-xl prose font-semibold leading-none">Good Service on all other lines</h2>
+                    <h2 className="text-xl prose font-semibold leading-none">Good Service on all {sortedLineStatuses.filter(line => !isNormalSeverity(line.lineStatuses)).length > 0 && `other `}lines</h2>
                 </div>
                 {sortedLineStatuses.filter(line => isNormalSeverity(line.lineStatuses)).map((line) => (
                     <div
                         key={line.id}
-                        className="flex flex-col mb-2"
+                        className="flex flex-col"
                     >
                         <div className="flex justify-between">
                             <h2 className="text-lg font-semibold">
                                 {line.name}
                             </h2>
                             {hasNightClosure(line.lineStatuses) && (
-                                <TrainFrontTunnel className={`w-[1lh] h-[1lh] ${line.id in lineColorMap ? `text-[${lineColorMap[line.id as keyof typeof lineColorMap]}]` : 'text-gray-400'}`} />
+                                <TooltipProvider>
+                                    <Tooltip>
+                                        <TooltipTrigger>
+                                            <TrainFrontTunnel className={`w-[1lh] h-[1lh] ${line.id in lineColorMap ? `${lineColorMap[line.id as keyof typeof lineColorMap].text}` : 'text-gray-400'}`} /></TooltipTrigger>
+                                        <TooltipContent>
+                                            <p>{line.lineStatuses.find(status => status.statusSeverity === 20) ?
+                                                `${line.lineStatuses.find(status => status.statusSeverity === 20)?.statusSeverityDescription}, ${line.lineStatuses.find(status => status.statusSeverity === 20)?.reason?.replace(new RegExp(`^${line.name.toUpperCase()}( LINE)?: `, 'i'), '').replace(/^(Hammersmith and City Line: )|(London Overground: )|(Docklands Light Railway: )\s*/, '')}` : 'No night closures'}</p>
+                                        </TooltipContent>
+                                    </Tooltip>
+                                </TooltipProvider>
+
                             )}
                         </div>
                         <div className="w-full h-[6px] relative saturate-150">
                             {(line.modeName === 'overground' || line.modeName === 'elizabeth-line') ? (
                                 <>
                                     <div className={`w-full h-[6px] ${line.id in lineColorMap
-                                        ? `bg-[${lineColorMap[line.id as keyof typeof lineColorMap]}]`
+                                        ? `${lineColorMap[line.id as keyof typeof lineColorMap].bg}`
                                         : 'bg-gray-400'
                                         }`} />
                                     <div className="absolute top-[2px] left-0 w-full h-[2px] bg-white" />
                                 </>
                             ) : (
                                 <div className={`w-full h-[6px] ${line.id in lineColorMap
-                                    ? `bg-[${lineColorMap[line.id as keyof typeof lineColorMap]}]`
+                                    ? `${lineColorMap[line.id as keyof typeof lineColorMap].bg}`
                                     : 'bg-gray-400'
                                     }`} />
                             )}

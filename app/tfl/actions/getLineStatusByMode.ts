@@ -1,6 +1,6 @@
 import { TflLineStatusResponse } from '../lib/types';
 
-export const revalidate = 30;
+export const revalidate = 60; // 60 seconds
 
 export async function getLineStatusByMode(modes: string[]): Promise<TflLineStatusResponse[]> {
     // Read the API credentials from environment variables
@@ -17,9 +17,6 @@ export async function getLineStatusByMode(modes: string[]): Promise<TflLineStatu
         
         const response = await fetch(
             `https://api.tfl.gov.uk/Line/Mode/${modesString}/Status?app_id=${appId}&app_key=${appKey}&detail=false`,
-            {
-                cache: 'no-store',
-            }
         );
 
         if (!response.ok) {
