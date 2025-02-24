@@ -2,7 +2,20 @@
 
 @plugin 'tailwindcss-animate';
 
-@custom-variant dark (&:is(.dark *));
+:root {
+  --background: hsl(0 0% 100%); // <-- Wrap in hsl
+  --foreground: hsl(0 0% 3.9%);
+}
+
+dark {
+  --background: hsl(0 0% 3.9%); // <-- Wrap in hsl
+  --foreground: hsl(0 0% 98%);
+}
+
+@theme inline {
+  --color-background: var(--background); // <-- Remove hsl
+  --color-foreground: var(--foreground);
+}
 
 @theme {
   --color-background: hsl(var(--background));
