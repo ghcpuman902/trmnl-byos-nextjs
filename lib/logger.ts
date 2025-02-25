@@ -33,24 +33,26 @@ export const log = async (
       break
   }
 
-  // Then log to database
-  try {
-    const { error } = await supabase
-      .from('system_logs')
-      .insert({
-        level,
-        message: messageText,
-        source: options.source,
-        metadata: options.metadata,
-        trace
-      })
+  // Then log to database without awaiting
+  (async () => {
+    try {
+      const { error } = await supabase
+        .from('system_logs')
+        .insert({
+          level,
+          message: messageText,
+          source: options.source,
+          metadata: options.metadata,
+          trace
+        })
 
-    if (error) {
-      console.error('Failed to write to system_logs:', error)
+      if (error) {
+        console.error('Failed to write to system_logs:', error)
+      }
+    } catch (err) {
+      console.error('Error writing to system_logs:', err)
     }
-  } catch (err) {
-    console.error('Error writing to system_logs:', err)
-  }
+  })()
 }
 
 // Convenience methods

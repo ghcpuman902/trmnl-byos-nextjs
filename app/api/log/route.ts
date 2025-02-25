@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase/client'
 import { logError, logInfo } from '@/lib/logger'
 import { defaultDevice } from '@/lib/defaultDevice'
+import { CustomError } from '@/lib/api/types'
 
 interface LogEntry {
   creation_timestamp: number
@@ -22,6 +23,14 @@ interface LogData {
 // Default device ID to use as fallback
 const DEFAULT_DEVICE_ID = defaultDevice.friendly_id
 
+// Define a type for the expected request body
+interface LogRequestBody {
+  log: {
+    logs_array: LogEntry[];
+  };
+}
+
+
 export async function GET(request: Request) {
   logInfo('Log API GET Request received (unexpected)', {
     source: 'api/log',
@@ -37,6 +46,12 @@ export async function GET(request: Request) {
   const apiKey = request.headers.get('Access-Token');
 
   if (!apiKey) {
+    const error = new Error('Missing Access-Token header');
+    logError(error, {
+      source: 'api/log',
+      metadata: { request_url: request.url }
+    })
+
     return NextResponse.json({
       status: 500,
       message: "Device not found"
@@ -51,11 +66,16 @@ export async function GET(request: Request) {
       .single()
 
     if (error || !device) {
-      logError('Error fetching device', {
+      // Create an error object with the Supabase error details
+      const deviceError: CustomError = new Error('Error fetching device');
+      // Attach the original error information
+      deviceError.originalError = error;
+
+      logError(deviceError, {
         source: 'api/log',
-        metadata: { error: JSON.stringify(error), apiKey },
-        trace: 'GET handler -> device fetch error'
+        metadata: { apiKey }
       })
+
       return NextResponse.json({
         status: 500,
         message: "Device not found"
@@ -68,9 +88,9 @@ export async function GET(request: Request) {
       device_id: device.friendly_id
     }, { status: 200 }) // 200 for device compatibility
   } catch (error) {
+    // The error object already contains the stack trace
     logError(error as Error, {
-      source: 'api/log',
-      trace: 'GET handler -> main try-catch'
+      source: 'api/log'
     })
     return NextResponse.json({
       status: 500,
@@ -104,9 +124,9 @@ export async function POST(request: Request) {
     let deviceFound = false;
 
     if (!apiKey) {
-      logError('Missing Access-Token header', {
-        source: 'api/log',
-        trace: 'Missing required header'
+      const error = new Error('Missing Access-Token header');
+      logError(error, {
+        source: 'api/log'
       })
       // Continue with default device instead of returning error
       logInfo('Using default device as fallback', {
@@ -122,11 +142,16 @@ export async function POST(request: Request) {
         .single()
 
       if (error || !device) {
-        logError('Error fetching device', {
+        // Create an error object with the Supabase error details
+        const deviceError: CustomError = new Error('Error fetching device');
+        // Attach the original error information
+        deviceError.originalError = error;
+
+        logError(deviceError, {
           source: 'api/log',
-          metadata: { error: JSON.stringify(error), apiKey, refreshRate, batteryVoltage, fwVersion, rssi },
-          trace: 'try-catch block -> try -> supabase error or no device'
+          metadata: { apiKey, refreshRate, batteryVoltage, fwVersion, rssi }
         })
+
         // Continue with default device instead of returning error
         logInfo('Using default device as fallback', {
           source: 'api/log',
@@ -136,7 +161,7 @@ export async function POST(request: Request) {
         // Use the found device
         deviceId = device.friendly_id;
         deviceFound = true;
-        
+
         logInfo('Device authenticated', {
           source: 'api/log',
           metadata: {
@@ -151,26 +176,28 @@ export async function POST(request: Request) {
       }
     }
 
-    const requestBody = await request.json()
+    const requestBody: LogRequestBody = await request.json();
     logInfo('Processing logs array', {
       source: 'api/log',
-      metadata: { 
-        logs: requestBody.log.logs_array, 
-        refresh_rate: refreshRate, 
-        battery_voltage: batteryVoltage, 
-        fw_version: fwVersion, 
+      metadata: {
+        logs: requestBody.log.logs_array,
+        refresh_rate: refreshRate,
+        battery_voltage: batteryVoltage,
+        fw_version: fwVersion,
         rssi: rssi,
         using_default_device: !deviceFound
       }
     })
 
     // Process log data
-    const logData: LogData = requestBody.log.logs_array.map((log: LogEntry) => ({
+    const logData: LogData = {
+      logs_array: requestBody.log.logs_array.map((log: LogEntry) => ({
         ...log,
         timestamp: log.creation_timestamp
           ? new Date(log.creation_timestamp * 1000).toISOString()
           : new Date().toISOString()
       }))
+    };
 
     console.log('📦 Processed log data:', JSON.stringify(logData, null, 2))
 
@@ -184,20 +211,23 @@ export async function POST(request: Request) {
 
     // If insertion failed and we're not already using the default device, try with default
     if (insertError && deviceId !== DEFAULT_DEVICE_ID) {
-      logError('Error inserting log with device ID, trying with default device', {
+      // Create an error object with the insert error details
+      const dbError: CustomError = new Error('Error inserting log with device ID, trying with default device');
+      // Attach the original error information
+      dbError.originalError = insertError;
+
+      logError(dbError, {
         source: 'api/log',
-        metadata: { 
-          error: JSON.stringify(insertError), 
+        metadata: {
           original_device_id: deviceId,
           default_device_id: DEFAULT_DEVICE_ID,
-          refresh_rate: refreshRate, 
-          battery_voltage: batteryVoltage, 
-          fw_version: fwVersion, 
+          refresh_rate: refreshRate,
+          battery_voltage: batteryVoltage,
+          fw_version: fwVersion,
           rssi: rssi
-        },
-        trace: 'Database insert error - falling back to default device'
+        }
       })
-      
+
       // Try again with default device
       const { error: fallbackError } = await supabase
         .from('logs')
@@ -205,18 +235,21 @@ export async function POST(request: Request) {
           friendly_id: DEFAULT_DEVICE_ID,
           log_data: logData
         })
-        
+
       if (fallbackError) {
-        logError('Error inserting log with default device', {
+        // Create an error object with the fallback error details
+        const fallbackDbError: CustomError = new Error('Error inserting log with default device');
+        // Attach the original error information
+        fallbackDbError.originalError = fallbackError;
+
+        logError(fallbackDbError, {
           source: 'api/log',
-          metadata: { 
-            error: JSON.stringify(fallbackError),
-            refresh_rate: refreshRate, 
-            battery_voltage: batteryVoltage, 
-            fw_version: fwVersion, 
+          metadata: {
+            refresh_rate: refreshRate,
+            battery_voltage: batteryVoltage,
+            fw_version: fwVersion,
             rssi: rssi
-          },
-          trace: 'Database insert error with default device'
+          }
         })
       } else {
         logInfo('Log saved successfully with default device', {
@@ -251,13 +284,13 @@ export async function POST(request: Request) {
     }, { status: 200 })
 
   } catch (error) {
+    // The error object already contains the stack trace
     logError(error as Error, {
-      source: 'api/log',
-      trace: 'Main try-catch block'
+      source: 'api/log'
     })
     return NextResponse.json({
-        status: 500,
-        message: "Internal server error"
+      status: 500,
+      message: "Internal server error"
     }, { status: 200 }) // 200 for device compatibility
   }
 } 

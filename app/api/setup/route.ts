@@ -1,11 +1,17 @@
 import { NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase/client'
 import { logError, logInfo } from '@/lib/logger'
+import { CustomError } from '@/lib/api/types'
 
 export async function GET(request: Request) {
     try {
         const macAddress = request.headers.get('ID')?.toUpperCase();
         if (!macAddress) {
+            const error = new Error('Missing ID header');
+            logError(error, {
+                source: 'api/setup',
+                metadata: { macAddress }
+            })
             return NextResponse.json({
                 status: 404,
                 api_key: null,
@@ -38,15 +44,20 @@ export async function GET(request: Request) {
                 .single()
 
             if (createError || !newDevice) {
-                logError('Error creating device:', {
+                // Create an error object with the Supabase error details
+                const deviceError: CustomError = new Error('Error creating device');
+                // Attach the original error information
+                (deviceError as CustomError).originalError = createError;
+                
+                logError(deviceError, {
                     source: 'api/setup',
-                    metadata: { error: createError, macAddress },
-                    trace: 'try-catch block -> try -> supabase insert error or no new device returned'
+                    metadata: { macAddress, friendly_id, api_key }
                 })
+                
                 return NextResponse.json({
                     status: 500,
                     reset_firmware: false,
-                    message: `Error creating new device, trace: api/setup -> try-catch block -> try -> supabase insert error or no new device returned. ${friendly_id}|${api_key}`
+                    message: `Error creating new device. ${friendly_id}|${api_key}`
                 }, { status: 200 })
             }
 
@@ -83,9 +94,9 @@ export async function GET(request: Request) {
         }, { status: 200 })
 
     } catch (error) {
+        // The error object already contains the stack trace
         logError(error as Error, {
-            source: 'api/setup',
-            trace: 'Main try-catch block'
+            source: 'api/setup'
         })
         return NextResponse.json({
             status: 500,
