@@ -6,6 +6,44 @@ import {
     TooltipProvider,
     TooltipTrigger,
 } from "@/components/ui/tooltip"
+import { cn } from '@/lib/utils';
+
+
+const TFLLogo = ({ className }: { className?: string }) => (
+    <div
+        style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+        }}
+        className={cn(className)}
+    >
+        <svg
+            style={{
+                width: '100%',
+                height: '100%'
+            }}
+            viewBox="0 0 615.322 500"
+        >
+            <g>
+                <path
+                    style={{
+                        fill: '#000F9F'
+                    }}
+                    d="M469.453,249.986c0,89.078-72.26,161.308-161.337,161.308c-89.1,0-161.294-72.23-161.294-161.308 c0-89.063,72.194-161.286,161.294-161.286C397.194,88.699,469.453,160.922,469.453,249.986 M308.116,0 C170.027,0,58.094,111.925,58.094,249.986C58.094,388.06,170.027,500,308.116,500c138.06,0,249.985-111.94,249.985-250.014 C558.101,111.925,446.176,0,308.116,0"
+                />
+                <rect
+                    style={{
+                        fill: '#000F9F'
+                    }}
+                    y="199.516"
+                    width="615.322"
+                    height="101.129"
+                />
+            </g>
+        </svg>
+    </div>
+)
 
 const lineColorMap = {
     'bakerloo': { text: 'text-[var(--tfl-bakerloo)]', bg: 'bg-[var(--tfl-bakerloo)]' },
@@ -117,9 +155,12 @@ export default async function StatusPage() {
 
     return (
         <div className="container mx-auto p-4 flex flex-col gap-2">
-            <h1 className="scroll-m-20 text-4xl font-extrabold tracking-tight lg:text-5xl">
-                TfL Line Status
-            </h1>
+            <div className="flex items-center gap-2">
+                <TFLLogo className="size-[var(--text-4xl)] lg:size-[var(--text-5xl)]" />
+                <h1 className="scroll-m-20 text-4xl font-extrabold tracking-tight lg:text-5xl">
+                    Line Status
+                </h1>
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {sortedLineStatuses.filter(line => !isNormalSeverity(line.lineStatuses)).map((line) => (
                     <div
@@ -156,7 +197,7 @@ export default async function StatusPage() {
                                 >
                                     <div className="">
                                         <span className={`font-medium ${severityTitleClass} mr-2`}>
-                                            {statusDescription}|{status.statusSeverity}
+                                            {statusDescription}
                                         </span>
                                         {status.reason && (
                                             <span className={`text-sm text-gray-600 mt-1 text-pretty`}>
