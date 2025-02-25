@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase/client'
-import { defaultDevice } from '@/lib/defaultDevice'
 import { logError, logInfo } from '@/lib/logger'
 
 export async function GET(request: Request) {
@@ -14,12 +13,25 @@ export async function GET(request: Request) {
         }
     })
 
-    const apiKey = request.headers.get('Access-Token') || defaultDevice.api_key;
-    const macAddress = request.headers.get('ID')?.toUpperCase() || defaultDevice.mac_address;
+    const apiKey = request.headers.get('Access-Token');
+    const macAddress = request.headers.get('ID')?.toUpperCase();
     const refreshRate = request.headers.get('Refresh-Rate');
     const batteryVoltage = request.headers.get('Battery-Voltage');
     const fwVersion = request.headers.get('FW-Version');
     const rssi = request.headers.get('RSSI');
+
+    if (!apiKey || !macAddress) {
+        logError('Missing required headers', {
+            source: 'api/display',
+            metadata: { apiKey, macAddress },
+            trace: 'Missing Access-Token or ID header'
+        })
+        return NextResponse.json({
+            status: 500,
+            reset_firmware: true,
+            message: "Device not found"
+        }, { status: 200 }) // Status 200 for device compatibility
+    }
 
     try {
         const { data: device, error } = await supabase
@@ -37,9 +49,9 @@ export async function GET(request: Request) {
             })
             return NextResponse.json({
                 status: 500,
-                reset_firmware: false,
-                message: "Device not found, trace: api/display -> try-catch block -> try -> supabase error or no device"
-            }, { status: 500 })
+                reset_firmware: true,
+                message: "Device not found"
+            }, { status: 200 })
         }
 
         // Log device metrics
@@ -47,7 +59,6 @@ export async function GET(request: Request) {
             source: 'api/display',
             metadata: {
                 friendly_id: device.friendly_id,
-                numeric_device_id: device.id,
                 battery_voltage: batteryVoltage,
                 fw_version: fwVersion,
                 rssi: rssi,
@@ -56,15 +67,14 @@ export async function GET(request: Request) {
         })
 
         const imageUrl = `https://api.manglekuo.com/api/dashboard/bitmap/t.bmp`;
-        const filename = `t.bmp`
-        const refreshRateMax = Math.max(60, Number(refreshRate || 60))
+        const filename = `t.bmp`;
+        const newRefreshRate = Math.min(60, Number(refreshRate || 60)); // update refresh rate to 1 minute if it's higher than 60
 
         logInfo('Display request successful', {
             source: 'api/display',
             metadata: {
                 friendly_id: device.friendly_id,
-                numeric_device_id: device.id,
-                refresh_rate: refreshRateMax,
+                refresh_rate: newRefreshRate,
                 filename
             }
         })
@@ -73,7 +83,7 @@ export async function GET(request: Request) {
             status: 0,
             image_url: imageUrl,
             filename: filename,
-            refresh_rate: refreshRateMax.toString(),
+            refresh_rate: newRefreshRate,
             reset_firmware: false,
             update_firmware: false,
             firmware_url: null,
@@ -88,7 +98,7 @@ export async function GET(request: Request) {
         return NextResponse.json({
             status: 500,
             reset_firmware: true,
-            message: "Device not found, trace: api/display -> try-catch block -> catch -> error"
-        }, { status: 500 })
+            message: "Device not found"
+        }, { status: 200 })
     }
 } 

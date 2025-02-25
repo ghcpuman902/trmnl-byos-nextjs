@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase/client'
-import { defaultDevice } from '@/lib/defaultDevice'
 import { logError, logInfo } from '@/lib/logger'
+import { defaultDevice } from '@/lib/defaultDevice'
 
 interface LogEntry {
   creation_timestamp: number
@@ -19,6 +19,9 @@ interface LogData {
   timestamp?: string
 }
 
+// Default device ID to use as fallback
+const DEFAULT_DEVICE_ID = defaultDevice.friendly_id
+
 export async function GET(request: Request) {
   logInfo('Log API GET Request received (unexpected)', {
     source: 'api/log',
@@ -31,15 +34,13 @@ export async function GET(request: Request) {
     }
   })
 
-  const apiKey = request.headers.get('Access-Token') || defaultDevice.api_key;
-  const macAddress = request.headers.get('ID')?.toUpperCase() || defaultDevice.mac_address;
+  const apiKey = request.headers.get('Access-Token');
 
-  if (!macAddress) {
+  if (!apiKey) {
     return NextResponse.json({
-      status: 404,
-      reset_firmware: false,
-      message: "ID header is required"
-    }, { status: 200 }) // Status 200 for device compatibility
+      status: 500,
+      message: "Device not found"
+    }, { status: 200 }) // 200 for device compatibility
   }
 
   try {
@@ -47,28 +48,25 @@ export async function GET(request: Request) {
       .from('devices')
       .select('*')
       .eq('api_key', apiKey)
-      .eq('mac_address', macAddress)
       .single()
 
     if (error || !device) {
       logError('Error fetching device', {
         source: 'api/log',
-        metadata: { error: JSON.stringify(error), apiKey, macAddress },
+        metadata: { error: JSON.stringify(error), apiKey },
         trace: 'GET handler -> device fetch error'
       })
       return NextResponse.json({
         status: 500,
-        reset_firmware: false,
         message: "Device not found"
-      }, { status: 200 })
+      }, { status: 200 }) // 200 for device compatibility
     }
 
     return NextResponse.json({
       status: 400, // Indicate wrong method in body
-      reset_firmware: false,
       message: "Please use POST method for sending logs",
       device_id: device.friendly_id
-    }, { status: 200 })
+    }, { status: 200 }) // 200 for device compatibility
   } catch (error) {
     logError(error as Error, {
       source: 'api/log',
@@ -76,9 +74,8 @@ export async function GET(request: Request) {
     })
     return NextResponse.json({
       status: 500,
-      reset_firmware: false,
       message: "Internal server error"
-    }, { status: 200 })
+    }, { status: 200 }) // 200 for device compatibility
   }
 }
 
@@ -96,44 +93,75 @@ export async function POST(request: Request) {
   })
 
   try {
-    const apiKey = request.headers.get('Access-Token') || defaultDevice.api_key;
-    const macAddress = request.headers.get('ID')?.toUpperCase() || defaultDevice.mac_address;
-    // const refreshRate = request.headers.get('Refresh-Rate');
-    // const batteryVoltage = request.headers.get('Battery-Voltage');
-    // const fwVersion = request.headers.get('FW-Version');
-    // const rssi = request.headers.get('RSSI');
+    const apiKey = request.headers.get('Access-Token');
+    const refreshRate = request.headers.get('Refresh-Rate');
+    const batteryVoltage = request.headers.get('Battery-Voltage');
+    const fwVersion = request.headers.get('FW-Version');
+    const rssi = request.headers.get('RSSI');
 
-    const { data: device, error } = await supabase
-      .from('devices')
-      .select('*')
-      .eq('api_key', apiKey)
-      .eq('mac_address', macAddress)
-      .single()
+    // Initialize device with default value
+    let deviceId = DEFAULT_DEVICE_ID;
+    let deviceFound = false;
 
-    if (error || !device) {
-      logError('Error fetching device', {
+    if (!apiKey) {
+      logError('Missing Access-Token header', {
         source: 'api/log',
-        metadata: { error: JSON.stringify(error), apiKey, macAddress },
-        trace: 'try-catch block -> try -> supabase error or no device'
+        trace: 'Missing required header'
       })
-      return NextResponse.json({
-        status: 500,
-        reset_firmware: false,
-        message: "Device not found, trace: api/log -> try-catch block -> try -> supabase error or no device"
-      }, { status: 500 })
-    }
-    logInfo('Device authenticated', {
-      source: 'api/log',
-      metadata: {
-        api_key: apiKey,
-        device_id: device.friendly_id
+      // Continue with default device instead of returning error
+      logInfo('Using default device as fallback', {
+        source: 'api/log',
+        metadata: { default_device_id: DEFAULT_DEVICE_ID }
+      })
+    } else {
+      // Try to find the device
+      const { data: device, error } = await supabase
+        .from('devices')
+        .select('*')
+        .eq('api_key', apiKey)
+        .single()
+
+      if (error || !device) {
+        logError('Error fetching device', {
+          source: 'api/log',
+          metadata: { error: JSON.stringify(error), apiKey, refreshRate, batteryVoltage, fwVersion, rssi },
+          trace: 'try-catch block -> try -> supabase error or no device'
+        })
+        // Continue with default device instead of returning error
+        logInfo('Using default device as fallback', {
+          source: 'api/log',
+          metadata: { default_device_id: DEFAULT_DEVICE_ID }
+        })
+      } else {
+        // Use the found device
+        deviceId = device.friendly_id;
+        deviceFound = true;
+        
+        logInfo('Device authenticated', {
+          source: 'api/log',
+          metadata: {
+            api_key: apiKey,
+            device_id: deviceId,
+            refresh_rate: refreshRate,
+            battery_voltage: batteryVoltage,
+            fw_version: fwVersion,
+            rssi: rssi
+          }
+        })
       }
-    })
+    }
 
     const requestBody = await request.json()
     logInfo('Processing logs array', {
       source: 'api/log',
-      metadata: { logs: requestBody.log.logs_array }
+      metadata: { 
+        logs: requestBody.log.logs_array, 
+        refresh_rate: refreshRate, 
+        battery_voltage: batteryVoltage, 
+        fw_version: fwVersion, 
+        rssi: rssi,
+        using_default_device: !deviceFound
+      }
     })
 
     // Process log data
@@ -146,30 +174,76 @@ export async function POST(request: Request) {
 
     console.log('📦 Processed log data:', JSON.stringify(logData, null, 2))
 
-    // Always attempt to insert log with default device if needed
+    // Try to insert log with the device ID (either real or default)
     const { error: insertError } = await supabase
       .from('logs')
       .insert({
-        friendly_id: device.friendly_id,
-        numeric_device_id: device.id,
+        friendly_id: deviceId,
         log_data: logData
       })
 
-    if (insertError) {
-      logError('Error inserting log', {
+    // If insertion failed and we're not already using the default device, try with default
+    if (insertError && deviceId !== DEFAULT_DEVICE_ID) {
+      logError('Error inserting log with device ID, trying with default device', {
         source: 'api/log',
-        metadata: { error: JSON.stringify(insertError) },
-        trace: 'Database insert error'
+        metadata: { 
+          error: JSON.stringify(insertError), 
+          original_device_id: deviceId,
+          default_device_id: DEFAULT_DEVICE_ID,
+          refresh_rate: refreshRate, 
+          battery_voltage: batteryVoltage, 
+          fw_version: fwVersion, 
+          rssi: rssi
+        },
+        trace: 'Database insert error - falling back to default device'
+      })
+      
+      // Try again with default device
+      const { error: fallbackError } = await supabase
+        .from('logs')
+        .insert({
+          friendly_id: DEFAULT_DEVICE_ID,
+          log_data: logData
+        })
+        
+      if (fallbackError) {
+        logError('Error inserting log with default device', {
+          source: 'api/log',
+          metadata: { 
+            error: JSON.stringify(fallbackError),
+            refresh_rate: refreshRate, 
+            battery_voltage: batteryVoltage, 
+            fw_version: fwVersion, 
+            rssi: rssi
+          },
+          trace: 'Database insert error with default device'
+        })
+      } else {
+        logInfo('Log saved successfully with default device', {
+          source: 'api/log',
+          metadata: {
+            device_id: DEFAULT_DEVICE_ID,
+            log_data: logData,
+            refresh_rate: refreshRate,
+            battery_voltage: batteryVoltage,
+            fw_version: fwVersion,
+            rssi: rssi
+          }
+        })
+      }
+    } else if (!insertError) {
+      logInfo('Log saved successfully', {
+        source: 'api/log',
+        metadata: {
+          device_id: deviceId,
+          log_data: logData,
+          refresh_rate: refreshRate,
+          battery_voltage: batteryVoltage,
+          fw_version: fwVersion,
+          rssi: rssi
+        }
       })
     }
-
-    logInfo('Log saved successfully', {
-      source: 'api/log',
-      metadata: {
-        device_id: device.friendly_id,
-        log_data: logData
-      }
-    })
 
     return NextResponse.json({
       status: 200,
@@ -183,8 +257,7 @@ export async function POST(request: Request) {
     })
     return NextResponse.json({
         status: 500,
-        reset_firmware: true,
-        message: "Device not found, trace: api/log -> try-catch block -> catch -> error"
-    }, { status: 500 })
+        message: "Internal server error"
+    }, { status: 200 }) // 200 for device compatibility
   }
 } 
