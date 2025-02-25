@@ -2,6 +2,28 @@ import { NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase/client'
 import { logError, logInfo } from '@/lib/logger'
 
+// Helper function to generate a random filename
+const generateRandomFilename = () => {
+  const timestamp = Date.now();
+  const randomString = Math.random().toString(36).substring(2, 10);
+  return `${timestamp}_${randomString}.bmp`;
+};
+
+// Helper function to pre-cache the image
+const precacheImage = async (imageUrl: string): Promise<boolean> => {
+  try {
+    const response = await fetch(imageUrl, { method: 'GET' });
+    return response.ok;
+  } catch (error) {
+    logError('Failed to precache image', {
+      source: 'api/display',
+      metadata: { imageUrl, error },
+      trace: 'precacheImage helper function'
+    });
+    return false;
+  }
+};
+
 export async function GET(request: Request) {
     // Log request details
     logInfo('Display API Request', {
@@ -66,23 +88,53 @@ export async function GET(request: Request) {
             }
         })
 
-        const imageUrl = `https://api.manglekuo.com/api/dashboard/bitmap/t.bmp`;
-        const filename = `t.bmp`;
+        // Generate a random filename to trick the device
+        const randomFilename = generateRandomFilename();
+        const baseUrl = 'https://api.manglekuo.com/api/dashboard/bitmap';
+        const imageUrl = `${baseUrl}/${randomFilename}`;
+        
+        // Pre-cache the image by making a request to the URL
+        const cacheSuccess = await precacheImage(imageUrl);
+        
+        if (!cacheSuccess) {
+            logError('Failed to cache image', {
+                source: 'api/display',
+                metadata: { imageUrl },
+                trace: 'Image caching failed'
+            });
+            // Fallback to a default filename if caching fails
+            const fallbackFilename = 't.bmp';
+            const fallbackUrl = `${baseUrl}/${fallbackFilename}`;
+            
+            return NextResponse.json({
+                status: 0,
+                image_url: fallbackUrl,
+                filename: fallbackFilename,
+                refresh_rate: Math.min(60, Number(refreshRate || 60)),
+                reset_firmware: false,
+                update_firmware: false,
+                firmware_url: null,
+                special_function: "restart_playlist"
+            }, { status: 200 });
+        }
+        
         const newRefreshRate = Math.min(60, Number(refreshRate || 60)); // update refresh rate to 1 minute if it's higher than 60
 
         logInfo('Display request successful', {
             source: 'api/display',
             metadata: {
+                image_url: imageUrl,
                 friendly_id: device.friendly_id,
                 refresh_rate: newRefreshRate,
-                filename
+                filename: randomFilename,
+                special_function: "restart_playlist"
             }
         })
 
         return NextResponse.json({
             status: 0,
             image_url: imageUrl,
-            filename: filename,
+            filename: randomFilename,
             refresh_rate: newRefreshRate,
             reset_firmware: false,
             update_firmware: false,
