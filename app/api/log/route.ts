@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase/client'
+import { createClient } from '@/lib/supabase/server'
 import { logError, logInfo } from '@/lib/logger'
 import { defaultDevice } from '@/lib/defaultDevice'
 import { CustomError } from '@/lib/api/types'
@@ -44,6 +44,7 @@ export async function GET(request: Request) {
   })
 
   const apiKey = request.headers.get('Access-Token');
+  const supabase = await createClient();
 
   if (!apiKey) {
     const error = new Error('Missing Access-Token header');
@@ -118,6 +119,7 @@ export async function POST(request: Request) {
     const batteryVoltage = request.headers.get('Battery-Voltage');
     const fwVersion = request.headers.get('FW-Version');
     const rssi = request.headers.get('RSSI');
+    const supabase = await createClient();
 
     // Initialize device with default value
     let deviceId = DEFAULT_DEVICE_ID;

@@ -1,6 +1,6 @@
-import { supabase } from '@/lib/supabase/client'
+import { createClient } from '@/lib/supabase/server'
 
-type LogLevel = 'info' | 'warn' | 'error' | 'debug'
+export type LogLevel = 'info' | 'warn' | 'error' | 'debug'
 
 interface LogOptions {
   source?: string
@@ -16,6 +16,7 @@ export const log = async (
   // Convert Error objects to strings if necessary
   const messageText = message instanceof Error ? message.message : message
   const trace = message instanceof Error ? message.stack : options.trace
+  const supabase = await createClient();
 
   // Always do console logging first
   switch (level) {
@@ -69,19 +70,118 @@ export type Log = {
   source?: string
   metadata?: Record<string, unknown>
   trace?: string
+  count?: number
 }
 
-export const readLogs = async (limit = 100): Promise<Log[]> => {
-  const { data: logs, error } = await supabase
-    .from('system_logs')
-    .select('*')
-    .order('created_at', { ascending: false })
-    .limit(limit)
+export const groupLogs = (logs: Log[]): Log[] => {
+  if (!logs.length) return [];
+  
+  const groupedLogs: Log[] = [];
+  let currentGroup: Log | null = null;
+  
+  const sortedLogs = [...logs].sort((a, b) => 
+    new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+  );
+  
+  for (const log of sortedLogs) {
+    if (!currentGroup) {
+      currentGroup = {
+        ...log,
+        count: 1
+      };
+      continue;
+    }
+    
+    const currentTime = new Date(currentGroup.created_at).getTime();
+    const logTime = new Date(log.created_at).getTime();
+    const timeDiff = Math.abs(currentTime - logTime) / 1000;
+    
+    if (
+      timeDiff <= 5 &&
+      log.level === currentGroup.level &&
+      log.source === currentGroup.source
+    ) {
+      currentGroup.count = (currentGroup.count || 1) + 1;
+      
+      if (log.message !== currentGroup.message) {
+        currentGroup.message = `${currentGroup.message} (+ ${currentGroup.count - 1} similar)`;
+      }
+    } else {
+      groupedLogs.push(currentGroup);
+      currentGroup = {
+        ...log,
+        count: 1
+      };
+    }
+  }
+  
+  if (currentGroup) {
+    groupedLogs.push(currentGroup);
+  }
+  
+  return groupedLogs;
+};
 
-  if (error) {
-    console.error('Failed to read system_logs:', error)
-    return []
+export const readLogs = async (
+  options: {
+    limit?: number;
+    page?: number;
+    levels?: LogLevel[];
+    sources?: string[];
+    search?: string;
+    groupSimilar?: boolean;
+  } = {}
+): Promise<{ logs: Log[], total: number }> => {
+  const {
+    limit = 100,
+    page = 1,
+    levels,
+    sources,
+    search,
+    groupSimilar = true
+  } = options;
+  const supabase = await createClient();
+  // Start building the query
+  let query = supabase
+    .from('system_logs')
+    .select('*', { count: 'exact' });
+
+  // Apply filters
+  if (levels && levels.length > 0) {
+    query = query.in('level', levels);
   }
 
-  return logs as Log[]
-} 
+  if (sources && sources.length > 0) {
+    query = query.in('source', sources);
+  }
+
+  if (search) {
+    query = query.or(`message.ilike.%${search}%,source.ilike.%${search}%`);
+  }
+
+  // Apply pagination
+  const from = (page - 1) * limit;
+  const to = from + limit - 1;
+
+  // Execute the query
+  const { data, error, count } = await query
+    .order('created_at', { ascending: false })
+    .range(from, to);
+
+  if (error) {
+    console.error('Failed to read system_logs:', error);
+    return { logs: [], total: 0 };
+  }
+
+  let logs = data as Log[];
+  
+  // Apply grouping if requested
+  if (groupSimilar && logs.length > 0) {
+    logs = groupLogs(logs);
+  }
+
+  return { 
+    logs, 
+    total: count || logs.length 
+  };
+}

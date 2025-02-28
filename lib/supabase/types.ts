@@ -4,7 +4,6 @@ export type Device = {
   mac_address: string;
   api_key: string;
   friendly_id: string;
-  refresh_interval: number; // DEPRECATED: Use refresh_schedule.default_refresh_rate instead
   refresh_schedule: RefreshSchedule | null;
   timezone: string; // Device timezone (e.g., 'America/New_York', 'Europe/London')
   last_update_time: string | null; // ISO timestamp of last update
@@ -33,6 +32,16 @@ export type Log = {
   created_at: string;
 }
 
+export type SystemLog = {
+  id: string; // uuid
+  created_at: string; // timestamp with time zone
+  level: string; // character varying
+  message: string; // text
+  source: string; // character varying
+  metadata: string; // text
+  trace: string; // text
+}
+
 export type Database = {
   public: {
     Tables: {
@@ -45,6 +54,11 @@ export type Database = {
         Row: Log;
         Insert: Omit<Log, 'id' | 'created_at'>;
         Update: Partial<Omit<Log, 'id'>>;
+      };
+      system_logs: { // New system_logs table
+        Row: SystemLog;
+        Insert: Omit<SystemLog, 'id' | 'created_at'>;
+        Update: Partial<Omit<SystemLog, 'id'>>;
       };
     };
   };

@@ -1,12 +1,14 @@
 import { NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase/client'
+import { createClient } from '@/lib/supabase/server'
 import { logError, logInfo } from '@/lib/logger'
 import { RefreshSchedule, TimeRange } from '@/lib/supabase/types'
 import { CustomError } from '@/lib/api/types'
+import { timezones } from '@/utils/helpers'
+
 // Helper function to generate a filename using friendly_id and a Base64-encoded timestamp
 const generateFilename = (friendlyId: string): string => {
     const timestamp = Date.now().toString();
-    const base64Timestamp = Buffer.from(timestamp).toString('base64'); // Encode the timestamp in Base64
+    const base64Timestamp = Buffer.from(timestamp).toString('base64url'); // Use URL-safe Base64 encoding
     return `${friendlyId}_${base64Timestamp}.bmp`;
 };
 
@@ -57,7 +59,7 @@ const prepareNextFrame = (deviceId: string): void => {
 const calculateRefreshRate = (
     refreshSchedule: RefreshSchedule | null,
     defaultRefreshRate: number,
-    timezone: string = 'UTC'
+    timezone: string = timezones[0].value
 ): number => {
     // Use the default refresh rate directly
     if (!refreshSchedule) {
@@ -80,13 +82,13 @@ const calculateRefreshRate = (
     // Check if current time falls within any of the defined time ranges
     for (const range of refreshSchedule.time_ranges as TimeRange[]) {
         if (isTimeInRange(currentTimeString, range.start_time, range.end_time)) {
-            // Convert refresh rate from seconds to device units (3 units = 1 second)
-            return range.refresh_rate * 3;
+            // Convert refresh rate from seconds to device units (1 unit = 1 second)
+            return range.refresh_rate;
         }
     }
 
     // If no specific range matches, use the default refresh rate from the schedule
-    return refreshSchedule.default_refresh_rate * 3;
+    return refreshSchedule.default_refresh_rate;
 };
 
 // Helper function to check if a time is within a given range
@@ -108,6 +110,7 @@ const updateDeviceRefreshStatus = async (
 ): Promise<void> => {
     const now = new Date();
     const nextExpectedUpdate = new Date(now.getTime() + (refreshDurationSeconds * 1000));
+    const supabase = await createClient();
 
     try {
         const { error } = await supabase
@@ -146,6 +149,7 @@ export async function GET(request: Request) {
     const batteryVoltage = request.headers.get('Battery-Voltage');
     const fwVersion = request.headers.get('FW-Version');
     const rssi = request.headers.get('RSSI');
+    const supabase = await createClient();
 
     // Log request details
     logInfo('Display API Request', {
@@ -235,12 +239,10 @@ export async function GET(request: Request) {
             deviceTimezone
         );
 
-        // Convert device units to seconds for tracking (3 units = 1 second)
-        const refreshDurationSeconds = dynamicRefreshRate / 3;
 
         // Update device refresh status information in the background
         // We don't await this to avoid delaying the response
-        updateDeviceRefreshStatus(device.friendly_id, refreshDurationSeconds, deviceTimezone);
+        updateDeviceRefreshStatus(device.friendly_id, dynamicRefreshRate, deviceTimezone);
 
         // Prepare for the next frame in the background
         // This will generate and pre-cache the next image that will be used in the future
@@ -249,7 +251,7 @@ export async function GET(request: Request) {
         }, 0);
 
         // Calculate human-readable next update time for logging
-        const nextUpdateTime = new Date(Date.now() + (refreshDurationSeconds * 1000));
+        const nextUpdateTime = new Date(Date.now() + (dynamicRefreshRate * 1000));
 
         logInfo('Display request successful', {
             source: 'api/display',
@@ -257,7 +259,7 @@ export async function GET(request: Request) {
                 image_url: imageUrl,
                 friendly_id: device.friendly_id,
                 refresh_rate: dynamicRefreshRate,
-                refresh_duration_seconds: refreshDurationSeconds,
+                refresh_duration_seconds: dynamicRefreshRate,
                 calculated_from_schedule: !!device.refresh_schedule,
                 next_update_expected: nextUpdateTime.toISOString(),
                 filename: nextFilename,

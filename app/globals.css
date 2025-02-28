@@ -4,14 +4,7 @@
 
 @custom-variant dark (&:is(.dark *));
 
-@theme {
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.145 0 0);
   --popover: oklch(1 0 0);
@@ -34,7 +27,7 @@
   --chart-3: oklch(0.398 0.07 227.392);
   --chart-4: oklch(0.828 0.189 84.429);
   --chart-5: oklch(0.769 0.188 70.08);
-  --radius: 0.625rem;;
+  --radius: 0.625rem;
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
   --sidebar-primary: oklch(0.205 0 0);
@@ -43,27 +36,8 @@
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.87 0 0);
-
-  /* TfL Line Colors */
-  --tfl-bakerloo: #B36305;
-  --tfl-central: #E32017;
-  --tfl-circle: #FFD300;
-  --tfl-district: #00782A;
-  --tfl-hammersmith-city: #F3A9BB;
-  --tfl-jubilee: #A0A5A9;
-  --tfl-metropolitan: #9B0056;
-  --tfl-northern: #000000;
-  --tfl-piccadilly: #003688;
-  --tfl-victoria: #0098D4;
-  --tfl-waterloo-city: #95CDBA;
-  --tfl-dlr: #00A4A7;
-  --tfl-elizabeth: #6950A1;
-  --tfl-lioness: #FC9D9A;
-  --tfl-mildmay: #0071FD;
-  --tfl-suffragette: #76B82A;
-  --tfl-weaver: #A45A2A;
-  --tfl-windrush: #EE2E24;
-  --tfl-overground: #0071FD;
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
 }
 
 .dark {
@@ -101,7 +75,10 @@
   --sidebar-ring: oklch(0.439 0 0);
 }
 
+
 @theme inline {
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -138,6 +115,26 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+  --animate-accordion-down: accordion-down 0.2s ease-out;
+  --animate-accordion-up: accordion-up 0.2s ease-out;
+
+  @keyframes accordion-down {
+    from {
+      height: 0;
+    }
+    to {
+      height: var(--radix-accordion-content-height);
+    }
+  }
+
+  @keyframes accordion-up {
+    from {
+      height: var(--radix-accordion-content-height);
+    }
+    to {
+      height: 0;
+    }
+  }
 }
 
 @layer base {
@@ -147,4 +144,36 @@
   body {
     @apply bg-background text-foreground;
   }
+}
+
+/* Custom radar ping animation */
+@keyframes radar-ping {
+  0% {
+    transform: scale(1);
+    opacity: 0.8;
+  }
+  50% {
+    transform: scale(1.5);
+    opacity: 0.3;
+  }
+  100% {
+    transform: scale(4);
+    opacity: 0;
+  }
+}
+
+
+.animate-radar-ping:after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 100%;
+  height: 100%;
+  margin-left: -50%;
+  margin-top: -50%;
+  background-color: inherit;
+  border-radius: 50%;
+  opacity: 0.5;
+  animation: radar-ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;
 }

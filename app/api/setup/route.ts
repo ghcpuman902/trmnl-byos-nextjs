@@ -1,10 +1,12 @@
 import { NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase/client'
+import { createClient } from '@/lib/supabase/server'
 import { logError, logInfo } from '@/lib/logger'
 import { CustomError } from '@/lib/api/types'
+import { generateApiKey, generateFriendlyId } from '@/utils/helpers'
 
 export async function GET(request: Request) {
     try {
+        const supabase = await createClient();
         const macAddress = request.headers.get('ID')?.toUpperCase();
         if (!macAddress) {
             const error = new Error('Missing ID header');
@@ -29,8 +31,8 @@ export async function GET(request: Request) {
 
         if (error || !device) {
             // Device not found, create a new one
-            const friendly_id = Math.random().toString(36).substring(2, 8).toUpperCase();
-            const api_key = Math.random().toString(36).substring(2, 30);
+            const friendly_id = generateFriendlyId(macAddress, new Date().toISOString().replace(/[-:Z]/g, ""));
+            const api_key = generateApiKey(macAddress, new Date().toISOString().replace(/[-:Z]/g, ""));
             const { data: newDevice, error: createError } = await supabase
                 .from('devices')
                 .insert({
@@ -38,7 +40,19 @@ export async function GET(request: Request) {
                     name: `TRMNL Device ${friendly_id}`,
                     friendly_id: friendly_id,
                     api_key: api_key,
-                    refresh_interval: 300 // 300 seconds / 5 minutes
+                    refresh_schedule: {
+                        default_refresh_rate: 60, // Default refresh rate in seconds
+                        time_ranges: [
+                            {
+                                start_time: "00:00", // Start of the time range
+                                end_time: "07:00",   // End of the time range
+                                refresh_rate: 3600   // Refresh rate in seconds
+                            }
+                        ]
+                    },
+                    last_update_time: new Date().toISOString(), // Current time as last update
+                    next_expected_update: new Date(Date.now() + 3600 * 1000).toISOString(), // 1 hour from now
+                    timezone: "Europe/London" // Default timezone
                 })
                 .select()
                 .single()
